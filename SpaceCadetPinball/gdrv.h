@@ -40,7 +40,13 @@ struct ColorRgba
 	void SetBlue(uint8_t val) { Color = (Color & (~(0xffu << blueOffset))) | (val << blueOffset); }
 
 private:
+#if SDL_BYTEORDER == SDL_BIG_ENDIAN
+	// Keep memory layout in BGRA byte order on big-endian targets.
+	static const unsigned alphaOffset = 0 * 8, redOffset = 1 * 8, greenOffset = 2 * 8, blueOffset = 3 * 8;
+#else
+	// Keep memory layout in BGRA byte order on little-endian targets.
 	static const unsigned alphaOffset = 3 * 8, redOffset = 2 * 8, greenOffset = 1 * 8, blueOffset = 0 * 8;
+#endif
 };
 
 static_assert(sizeof(ColorRgba) == 4, "Wrong size of RGBA color");

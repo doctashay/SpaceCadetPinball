@@ -127,7 +127,7 @@ void zdrv::CreatePreview(zmap_header_type& zMap)
 	auto texture = SDL_CreateTexture
 	(
 		winmain::Renderer,
-		SDL_PIXELFORMAT_ARGB8888,
+		SDL_PIXELFORMAT_BGRA32,
 		SDL_TEXTUREACCESS_STATIC,
 		zMap.Width, zMap.Height
 	);
