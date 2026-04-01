@@ -181,11 +181,14 @@ int gdrv::display_palette(ColorRgba* plt)
 	std::memset(current_palette, 0, sizeof current_palette);
 	std::memcpy(current_palette, sysPaletteColors, sizeof sysPaletteColors);	
 
+	const auto paletteBytes = reinterpret_cast<const uint8_t*>(plt);
 	for (int index = 10; plt && index < 246; index++)
 	{
-		auto srcClr = plt[index];
-		srcClr.SetAlpha(0xff);		
-		current_palette[index] = ColorRgba{ srcClr };
+		const auto colorOffset = index * 4;
+		const auto blue = paletteBytes[colorOffset + 0];
+		const auto green = paletteBytes[colorOffset + 1];
+		const auto red = paletteBytes[colorOffset + 2];
+		current_palette[index] = ColorRgba{ red, green, blue, 0xff };
 		current_palette[index].SetAlpha(2);
 	}
 

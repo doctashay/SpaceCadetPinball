@@ -88,17 +88,25 @@ int winmain::WinMain(LPCSTR lpCmdLine)
 		return 1;
 	}
 
-	// If HW fails, fallback to SW SDL renderer.
+	// Prefer vsync for smoother frame pacing on older systems.
+	SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
+
+	// If HW fails, fallback to non-vsync HW and finally SW SDL renderer.
 	SDL_Renderer* renderer = nullptr;
-	auto swOffset = strstr(lpCmdLine, "-sw") != nullptr ? 1 : 0;
-	for (int i = swOffset; i < 2 && !renderer; i++)
+	const auto forceSoftware = strstr(lpCmdLine, "-sw") != nullptr;
+	const uint32_t rendererFlags[] =
 	{
-		Renderer = renderer = SDL_CreateRenderer
-		(
-			window,
-			-1,
-			i == 0 ? SDL_RENDERER_ACCELERATED : SDL_RENDERER_SOFTWARE
-		);
+		SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC,
+		SDL_RENDERER_ACCELERATED,
+		SDL_RENDERER_SOFTWARE
+	};
+	for (auto flags : rendererFlags)
+	{
+		if (forceSoftware && flags != SDL_RENDERER_SOFTWARE)
+			continue;
+		Renderer = renderer = SDL_CreateRenderer(window, -1, flags);
+		if (renderer)
+			break;
 	}
 	if (!renderer)
 	{
@@ -1116,6 +1124,7 @@ void winmain::a_dialog()
 				ImGui::Separator();
 
 				ImGui::TextUnformatted("Decompiled -> Ported to SDL");
+				ImGui::TextUnformatted("ported by shay");
 				ImGui::Text("Version %s", Version);
 				if (ImGui::SmallButton("Project home: https://github.com/k4zmu2a/SpaceCadetPinball"))
 				{
