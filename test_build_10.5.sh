@@ -14,7 +14,7 @@ set -euo pipefail
 #
 # Environment overrides:
 #   MACPORTS_PREFIX      (default: /opt/local)
-#   TARGET_ARCH          (default: i386)
+#   TARGET_ARCH          (default: ppc)
 #   TARGET_SYSROOT       (optional; SDK sysroot path)
 #   TARGET_DEPLOYMENT    (default: 10.5)
 #   BUILD_DIR            (default: build-10.5)
@@ -24,7 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 MACPORTS_PREFIX="${MACPORTS_PREFIX:-/opt/local}"
-TARGET_ARCH="${TARGET_ARCH:-i386}"
+TARGET_ARCH="${TARGET_ARCH:-ppc}"
 TARGET_DEPLOYMENT="${TARGET_DEPLOYMENT:-10.5}"
 TARGET_SYSROOT="${TARGET_SYSROOT:-}"
 BUILD_DIR="${BUILD_DIR:-build-10.5}"
