@@ -11,6 +11,7 @@ set -euo pipefail
 # Usage:
 #   ./test_build_10.5.sh
 #   ./test_build_10.5.sh --run
+#   ./test_build_10.5.sh --run --audio-check
 #
 # Environment overrides:
 #   MACPORTS_PREFIX      (default: /opt/local)
@@ -22,6 +23,8 @@ set -euo pipefail
 #   APP_BUNDLE_DIR       (default: <repo>/SpaceCadetPinball.app)
 #   APP_VERSION          (default: 2.1.1-ppc)
 #   DAT_SOURCE           (default: auto-detect PINBALL.DAT/pinball.dat)
+#   WAV_SOURCE_DIR       (default: DAT source directory)
+#   PROFILE              (default: safe; values: safe|aggressive)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -35,12 +38,18 @@ INSTALL_PREFIX="${INSTALL_PREFIX:-$SCRIPT_DIR/out-10.5}"
 APP_BUNDLE_DIR="${APP_BUNDLE_DIR:-$SCRIPT_DIR/SpaceCadetPinball.app}"
 APP_VERSION="${APP_VERSION:-2.1.1-ppc}"
 DAT_SOURCE="${DAT_SOURCE:-}"
+WAV_SOURCE_DIR="${WAV_SOURCE_DIR:-}"
+PROFILE="${PROFILE:-safe}"
 DO_RUN=0
+AUDIO_CHECK=0
 
 for arg in "$@"; do
     case "$arg" in
         --run)
             DO_RUN=1
+            ;;
+        --audio-check)
+            AUDIO_CHECK=1
             ;;
         *)
             echo "Unknown argument: $arg" >&2
@@ -92,9 +101,22 @@ export CXX="${CXX:-g++-mp-14}"
 export SDL_RENDER_DRIVER="${SDL_RENDER_DRIVER:-opengl}"
 export SDL_RENDER_VSYNC="${SDL_RENDER_VSYNC:-1}"
 
-COMMON_CFLAGS="-O2 -pipe -arch $TARGET_ARCH -mmacosx-version-min=$TARGET_DEPLOYMENT"
+COMMON_CFLAGS="-O3 -pipe -arch $TARGET_ARCH -mcpu=G4 -mtune=G4 -fomit-frame-pointer -DNDEBUG -mmacosx-version-min=$TARGET_DEPLOYMENT"
 COMMON_CXXFLAGS="$COMMON_CFLAGS"
-COMMON_LDFLAGS="-arch $TARGET_ARCH -mmacosx-version-min=$TARGET_DEPLOYMENT"
+COMMON_LDFLAGS="-arch $TARGET_ARCH -mcpu=G4 -mtune=G4 -mmacosx-version-min=$TARGET_DEPLOYMENT"
+
+case "$PROFILE" in
+    safe)
+        ;;
+    aggressive)
+        COMMON_CFLAGS="$COMMON_CFLAGS -ffast-math"
+        COMMON_CXXFLAGS="$COMMON_CXXFLAGS -ffast-math"
+        ;;
+    *)
+        echo "Unknown PROFILE value: $PROFILE (expected safe or aggressive)" >&2
+        exit 2
+        ;;
+esac
 
 if [[ -n "$TARGET_SYSROOT" ]]; then
     COMMON_CFLAGS="$COMMON_CFLAGS -isysroot $TARGET_SYSROOT"
@@ -114,7 +136,7 @@ echo "5) Stage output under $INSTALL_PREFIX for manual runtime validation."
 echo "6) Optional smoke run with OpenGL renderer forced via SDL hints."
 
 cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" \
-    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" \
     -DCMAKE_PREFIX_PATH="$MACPORTS_PREFIX" \
     -DCMAKE_OSX_DEPLOYMENT_TARGET="$TARGET_DEPLOYMENT" \
@@ -163,15 +185,74 @@ mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BIN_PATH" "$APP_MACOS/SpaceCadetPinball"
 cp "$DAT_SOURCE" "$APP_MACOS/PINBALL.DAT"
 
+if [[ -z "$WAV_SOURCE_DIR" ]]; then
+    WAV_SOURCE_DIR="$(cd "$(dirname "$DAT_SOURCE")" && pwd)"
+fi
+
+copied_wav_count=0
+if [[ -d "$WAV_SOURCE_DIR" ]]; then
+    shopt -s nullglob
+    for wav_file in "$WAV_SOURCE_DIR"/*.WAV "$WAV_SOURCE_DIR"/*.wav; do
+        cp "$wav_file" "$APP_MACOS/"
+        copied_wav_count=$((copied_wav_count + 1))
+    done
+    shopt -u nullglob
+fi
+
+if [[ -d "$WAV_SOURCE_DIR/SOUND" ]]; then
+    mkdir -p "$APP_MACOS/SOUND"
+    shopt -s nullglob
+    for wav_file in "$WAV_SOURCE_DIR/SOUND"/*.WAV "$WAV_SOURCE_DIR/SOUND"/*.wav; do
+        cp "$wav_file" "$APP_MACOS/SOUND/"
+        copied_wav_count=$((copied_wav_count + 1))
+    done
+    shopt -u nullglob
+fi
+
 INFO_PLIST_TEMPLATE="$SCRIPT_DIR/Platform/macOS/Info.plist"
 if [[ -f "$INFO_PLIST_TEMPLATE" ]]; then
     cp "$INFO_PLIST_TEMPLATE" "$APP_CONTENTS/Info.plist"
     sed -i '' "s/CHANGEME_SW_VERSION/$APP_VERSION/" "$APP_CONTENTS/Info.plist"
+    sed -i '' "s/<string>10\\.11<\\/string>/<string>$TARGET_DEPLOYMENT<\\/string>/" "$APP_CONTENTS/Info.plist"
+else
+    cat > "$APP_CONTENTS/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>English</string>
+    <key>CFBundleExecutable</key>
+    <string>SpaceCadetPinball</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.github.k4zmu2a.spacecadetpinball</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>SpaceCadetPinball</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$APP_VERSION</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>$TARGET_DEPLOYMENT</string>
+</dict>
+</plist>
+EOF
 fi
 
-ICON_PATH="$SCRIPT_DIR/Platform/macOS/SpaceCadetPinball.icns"
+ICON_PATH="$SCRIPT_DIR/space.icns"
 if [[ -f "$ICON_PATH" ]]; then
-    cp "$ICON_PATH" "$APP_RESOURCES/SpaceCadetPinball.icns"
+    cp "$ICON_PATH" "$APP_RESOURCES/space.icns"
+    if [[ -f "$APP_CONTENTS/Info.plist" ]]; then
+        if rg -n "<key>CFBundleIconFile</key>" "$APP_CONTENTS/Info.plist" >/dev/null 2>&1; then
+            sed -i '' "s#<key>CFBundleIconFile</key>[[:space:]]*<string>[^<]*</string>#<key>CFBundleIconFile</key>\n\t<string>space.icns</string>#" "$APP_CONTENTS/Info.plist"
+        else
+            sed -i '' "s#<key>CFBundleExecutable</key>[[:space:]]*<string>SpaceCadetPinball</string>#<key>CFBundleExecutable</key>\n\t<string>SpaceCadetPinball</string>\n\t<key>CFBundleIconFile</key>\n\t<string>space.icns</string>#" "$APP_CONTENTS/Info.plist"
+        fi
+    fi
 fi
 
 echo -n "APPL????" > "$APP_CONTENTS/PkgInfo"
@@ -181,11 +262,21 @@ echo "Build complete."
 echo "Binary: $BIN_PATH"
 echo "App:    $APP_BUNDLE_DIR"
 echo "Data:   $APP_MACOS/PINBALL.DAT"
+echo "WAVs:   copied $copied_wav_count file(s)"
 echo "Installed under: $INSTALL_PREFIX"
 
 if [[ "$DO_RUN" -eq 1 ]]; then
     echo
     echo "Launching with SDL_RENDER_DRIVER=$SDL_RENDER_DRIVER"
     "$APP_MACOS/SpaceCadetPinball" -sw || true
+fi
+
+if [[ "$AUDIO_CHECK" -eq 1 ]]; then
+    echo
+    echo "Audio smoke-check:"
+    echo "1) Ensure game starts WITHOUT '-noaudio'."
+    echo "2) Verify startup log includes: 'Audio device opened: ...'."
+    echo "3) Start a game and confirm launch/bounce sounds."
+    echo "4) Verify background music starts after table load."
 fi
 

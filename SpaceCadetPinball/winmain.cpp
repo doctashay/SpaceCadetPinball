@@ -412,6 +412,8 @@ void winmain::MainLoop()
 				UpdateToFrameCounter -= UpdateToFrameRatio;
 			}
 
+			// Avoid hot-loop SDL error polling overhead in release builds.
+#ifndef NDEBUG
 			auto sdlError = SDL_GetError();
 			if (sdlError[0] || !PrevSdlError.empty())
 			{
@@ -436,6 +438,7 @@ void winmain::MainLoop()
 					PrevSdlErrorCount++;
 				}
 			}
+#endif
 
 			auto updateEnd = Clock::now();
 			auto targetTimeDelta = TargetFrameTime - DurationMs(updateEnd - frameStart) - sleepRemainder;
