@@ -19,6 +19,9 @@ set -euo pipefail
 #   TARGET_DEPLOYMENT    (default: 10.5)
 #   BUILD_DIR            (default: build-10.5)
 #   INSTALL_PREFIX       (default: <repo>/out-10.5)
+#   APP_BUNDLE_DIR       (default: <repo>/SpaceCadetPinball.app)
+#   APP_VERSION          (default: 2.1.1-ppc)
+#   DAT_SOURCE           (default: auto-detect PINBALL.DAT/pinball.dat)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -29,6 +32,9 @@ TARGET_DEPLOYMENT="${TARGET_DEPLOYMENT:-10.5}"
 TARGET_SYSROOT="${TARGET_SYSROOT:-}"
 BUILD_DIR="${BUILD_DIR:-build-10.5}"
 INSTALL_PREFIX="${INSTALL_PREFIX:-$SCRIPT_DIR/out-10.5}"
+APP_BUNDLE_DIR="${APP_BUNDLE_DIR:-$SCRIPT_DIR/SpaceCadetPinball.app}"
+APP_VERSION="${APP_VERSION:-2.1.1-ppc}"
+DAT_SOURCE="${DAT_SOURCE:-}"
 DO_RUN=0
 
 for arg in "$@"; do
@@ -57,6 +63,7 @@ echo "Target arch:        $TARGET_ARCH"
 echo "Deployment target:  $TARGET_DEPLOYMENT"
 echo "Build directory:    $BUILD_DIR"
 echo "Install prefix:     $INSTALL_PREFIX"
+echo "App bundle:         $APP_BUNDLE_DIR"
 
 require_cmd cmake
 require_cmd pkg-config
@@ -102,8 +109,9 @@ echo "== Plan checkpoints =="
 echo "1) Toolchain and dependency probe (gcc14, cmake, pkg-config, SDL2)."
 echo "2) Configure for legacy target (macOS 10.5, $TARGET_ARCH) using MacPorts libs."
 echo "3) Build with verbose output to surface ABI/API incompatibilities."
-echo "4) Stage output under $INSTALL_PREFIX for manual runtime validation."
-echo "5) Optional smoke run with OpenGL renderer forced via SDL hints."
+echo "4) Create SpaceCadetPinball.app and embed game data."
+echo "5) Stage output under $INSTALL_PREFIX for manual runtime validation."
+echo "6) Optional smoke run with OpenGL renderer forced via SDL hints."
 
 cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
@@ -122,14 +130,62 @@ cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" \
 cmake --build "$BUILD_DIR" --verbose
 cmake --install "$BUILD_DIR"
 
+BIN_PATH="$SCRIPT_DIR/bin/SpaceCadetPinball"
+if [[ ! -x "$BIN_PATH" ]]; then
+    echo "Expected binary not found: $BIN_PATH" >&2
+    exit 1
+fi
+
+if [[ -z "$DAT_SOURCE" ]]; then
+    for candidate in \
+        "$SCRIPT_DIR/PINBALL.DAT" \
+        "$SCRIPT_DIR/pinball.dat" \
+        "$SCRIPT_DIR/bin/PINBALL.DAT" \
+        "$SCRIPT_DIR/bin/pinball.dat"; do
+        if [[ -f "$candidate" ]]; then
+            DAT_SOURCE="$candidate"
+            break
+        fi
+    done
+fi
+if [[ -z "$DAT_SOURCE" || ! -f "$DAT_SOURCE" ]]; then
+    echo "PINBALL.DAT source file not found." >&2
+    echo "Set DAT_SOURCE=/absolute/path/to/PINBALL.DAT and run again." >&2
+    exit 1
+fi
+
+APP_CONTENTS="$APP_BUNDLE_DIR/Contents"
+APP_MACOS="$APP_CONTENTS/MacOS"
+APP_RESOURCES="$APP_CONTENTS/Resources"
+rm -rf "$APP_BUNDLE_DIR"
+mkdir -p "$APP_MACOS" "$APP_RESOURCES"
+
+cp "$BIN_PATH" "$APP_MACOS/SpaceCadetPinball"
+cp "$DAT_SOURCE" "$APP_MACOS/PINBALL.DAT"
+
+INFO_PLIST_TEMPLATE="$SCRIPT_DIR/Platform/macOS/Info.plist"
+if [[ -f "$INFO_PLIST_TEMPLATE" ]]; then
+    cp "$INFO_PLIST_TEMPLATE" "$APP_CONTENTS/Info.plist"
+    sed -i '' "s/CHANGEME_SW_VERSION/$APP_VERSION/" "$APP_CONTENTS/Info.plist"
+fi
+
+ICON_PATH="$SCRIPT_DIR/Platform/macOS/SpaceCadetPinball.icns"
+if [[ -f "$ICON_PATH" ]]; then
+    cp "$ICON_PATH" "$APP_RESOURCES/SpaceCadetPinball.icns"
+fi
+
+echo -n "APPL????" > "$APP_CONTENTS/PkgInfo"
+
 echo
 echo "Build complete."
-echo "Binary: $SCRIPT_DIR/bin/SpaceCadetPinball"
+echo "Binary: $BIN_PATH"
+echo "App:    $APP_BUNDLE_DIR"
+echo "Data:   $APP_MACOS/PINBALL.DAT"
 echo "Installed under: $INSTALL_PREFIX"
 
 if [[ "$DO_RUN" -eq 1 ]]; then
     echo
     echo "Launching with SDL_RENDER_DRIVER=$SDL_RENDER_DRIVER"
-    "$SCRIPT_DIR/bin/SpaceCadetPinball" -sw || true
+    "$APP_MACOS/SpaceCadetPinball" -sw || true
 fi
 
