@@ -135,8 +135,19 @@ int winmain::WinMain(LPCSTR lpCmdLine)
 	{
 		// Load SDL Game Controller definitions from DB
 		unsigned decompressedSize{};
+		std::vector<unsigned char> controllerDbCompressedBytes;
+		controllerDbCompressedBytes.reserve(EmbeddedData::SDL_GameControllerDB_compressed_size);
+		for (unsigned int word : EmbeddedData::SDL_GameControllerDB_compressed_data)
+		{
+			// Compressed data is encoded as little-endian words; rebuild byte stream explicitly
+			// so decompression works on big-endian targets (e.g. PPC).
+			controllerDbCompressedBytes.push_back(static_cast<unsigned char>(word & 0xFFu));
+			controllerDbCompressedBytes.push_back(static_cast<unsigned char>((word >> 8u) & 0xFFu));
+			controllerDbCompressedBytes.push_back(static_cast<unsigned char>((word >> 16u) & 0xFFu));
+			controllerDbCompressedBytes.push_back(static_cast<unsigned char>((word >> 24u) & 0xFFu));
+		}
 		const auto controllerDb = ImFontAtlas::DecompressCompressedStbData(
-			EmbeddedData::SDL_GameControllerDB_compressed_data,
+			reinterpret_cast<const unsigned int*>(controllerDbCompressedBytes.data()),
 			EmbeddedData::SDL_GameControllerDB_compressed_size,
 			decompressedSize);
 		auto rw = SDL_RWFromMem(controllerDb, decompressedSize);
