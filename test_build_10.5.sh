@@ -25,6 +25,7 @@ set -euo pipefail
 #   DAT_SOURCE           (default: auto-detect PINBALL.DAT/pinball.dat)
 #   WAV_SOURCE_DIR       (default: DAT source directory)
 #   PROFILE              (default: safe; values: safe|aggressive)
+#   PREFER_STATIC        (default: 1; values: 0|1)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -40,6 +41,7 @@ APP_VERSION="${APP_VERSION:-2.1.1-ppc}"
 DAT_SOURCE="${DAT_SOURCE:-}"
 WAV_SOURCE_DIR="${WAV_SOURCE_DIR:-}"
 PROFILE="${PROFILE:-safe}"
+PREFER_STATIC="${PREFER_STATIC:-1}"
 DO_RUN=0
 AUDIO_CHECK=0
 
@@ -78,6 +80,8 @@ require_cmd cmake
 require_cmd pkg-config
 require_cmd gcc-mp-14
 require_cmd g++-mp-14
+require_cmd otool
+require_cmd install_name_tool
 
 if [[ ! -d "$MACPORTS_PREFIX/include/SDL2" ]]; then
     echo "SDL2 headers not found under $MACPORTS_PREFIX/include/SDL2" >&2
@@ -147,7 +151,9 @@ cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" \
     -DCMAKE_CXX_FLAGS="$COMMON_CXXFLAGS" \
     -DCMAKE_EXE_LINKER_FLAGS="$COMMON_LDFLAGS" \
     -DSDL2_PATH="$MACPORTS_PREFIX" \
-    -DSDL2_MIXER_PATH="$MACPORTS_PREFIX"
+    -DSDL2_MIXER_PATH="$MACPORTS_PREFIX" \
+    -DPREFER_STATIC="$PREFER_STATIC" \
+    -DCMAKE_FIND_LIBRARY_SUFFIXES=".a;.dylib"
 
 cmake --build "$BUILD_DIR" --verbose
 cmake --install "$BUILD_DIR"
@@ -179,8 +185,9 @@ fi
 APP_CONTENTS="$APP_BUNDLE_DIR/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
+APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
 rm -rf "$APP_BUNDLE_DIR"
-mkdir -p "$APP_MACOS" "$APP_RESOURCES"
+mkdir -p "$APP_MACOS" "$APP_RESOURCES" "$APP_FRAMEWORKS"
 
 cp "$BIN_PATH" "$APP_MACOS/SpaceCadetPinball"
 cp "$DAT_SOURCE" "$APP_MACOS/PINBALL.DAT"
@@ -257,12 +264,89 @@ fi
 
 echo -n "APPL????" > "$APP_CONTENTS/PkgInfo"
 
+copy_and_relink_binary_deps() {
+    local target_bin="$1"
+    local copied_any=0
+    local changed=1
+    while [[ "$changed" -eq 1 ]]; do
+        changed=0
+        while IFS= read -r dep_line; do
+            local dep_path
+            dep_path="$(echo "$dep_line" | awk '{print $1}')"
+            if [[ -z "$dep_path" ]]; then
+                continue
+            fi
+            if [[ "$dep_path" != /opt/local/* ]]; then
+                continue
+            fi
+            if [[ "$dep_path" != *.dylib ]]; then
+                continue
+            fi
+
+            local dep_name
+            dep_name="$(basename "$dep_path")"
+            local bundled_dep="$APP_FRAMEWORKS/$dep_name"
+            local new_ref="@executable_path/../Frameworks/$dep_name"
+
+            if [[ ! -f "$bundled_dep" ]]; then
+                cp "$dep_path" "$bundled_dep"
+                chmod u+w "$bundled_dep"
+                copied_any=1
+                changed=1
+            fi
+
+            install_name_tool -change "$dep_path" "$new_ref" "$target_bin" 2>/dev/null || true
+            install_name_tool -id "$new_ref" "$bundled_dep" 2>/dev/null || true
+        done < <(otool -L "$target_bin" | awk 'NR>1 {print}')
+
+        while IFS= read -r bundled_file; do
+            while IFS= read -r dep_line; do
+                local dep_path
+                dep_path="$(echo "$dep_line" | awk '{print $1}')"
+                if [[ -z "$dep_path" ]]; then
+                    continue
+                fi
+                if [[ "$dep_path" != /opt/local/* ]]; then
+                    continue
+                fi
+                if [[ "$dep_path" != *.dylib ]]; then
+                    continue
+                fi
+                local dep_name
+                dep_name="$(basename "$dep_path")"
+                local bundled_dep="$APP_FRAMEWORKS/$dep_name"
+                local new_ref="@executable_path/../Frameworks/$dep_name"
+
+                if [[ ! -f "$bundled_dep" ]]; then
+                    cp "$dep_path" "$bundled_dep"
+                    chmod u+w "$bundled_dep"
+                    copied_any=1
+                    changed=1
+                fi
+
+                install_name_tool -change "$dep_path" "$new_ref" "$bundled_file" 2>/dev/null || true
+                install_name_tool -id "$new_ref" "$bundled_file" 2>/dev/null || true
+            done < <(otool -L "$bundled_file" | awk 'NR>1 {print}')
+        done < <(ls "$APP_FRAMEWORKS"/*.dylib 2>/dev/null || true)
+    done
+
+    return "$copied_any"
+}
+
+copy_and_relink_binary_deps "$APP_MACOS/SpaceCadetPinball" || true
+
+if otool -L "$APP_MACOS/SpaceCadetPinball" | rg "/opt/local|@rpath" >/dev/null 2>&1; then
+    echo "WARNING: unresolved external dylib references still present in app executable:"
+    otool -L "$APP_MACOS/SpaceCadetPinball" | rg "/opt/local|@rpath" || true
+fi
+
 echo
 echo "Build complete."
 echo "Binary: $BIN_PATH"
 echo "App:    $APP_BUNDLE_DIR"
 echo "Data:   $APP_MACOS/PINBALL.DAT"
 echo "WAVs:   copied $copied_wav_count file(s)"
+echo "Frameworks: bundled from external dylibs where needed"
 echo "Installed under: $INSTALL_PREFIX"
 
 if [[ "$DO_RUN" -eq 1 ]]; then

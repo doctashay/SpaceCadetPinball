@@ -251,6 +251,22 @@ int winmain::WinMain(LPCSTR lpCmdLine)
 				prefPath
 			}
 		};
+#ifdef __APPLE__
+		// Finder launches can report app base path under Contents/Resources.
+		// Add sibling Contents/MacOS explicitly so bundled PINBALL.DAT is found.
+		std::string appMacOsPath;
+		if (basePath)
+		{
+			appMacOsPath = basePath;
+			const std::string resourcesSuffix = "/Contents/Resources/";
+			const auto suffixPos = appMacOsPath.rfind(resourcesSuffix);
+			if (suffixPos != std::string::npos)
+			{
+				appMacOsPath.replace(suffixPos, resourcesSuffix.length(), "/Contents/MacOS/");
+				searchPaths.push_back(appMacOsPath.c_str());
+			}
+		}
+#endif
 		searchPaths.insert(searchPaths.end(), std::begin(PlatformDataPaths), std::end(PlatformDataPaths));
 		pb::SelectDatFile(searchPaths);
 

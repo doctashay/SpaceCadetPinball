@@ -1148,7 +1148,7 @@ const TextArray translations::Translations =
 			{ Lang::Danish, "3D Pinball til Windows - Space Cadet" },
 			{ Lang::German, "3D-Pinball für Windows - Space Cadet" },
 			{ Lang::Greek, "Φλίπερ-3Δ για Windows - Space Cadet" },
-			{ Lang::English, "3D Pinball for Windows - Space Cadet" },
+			{ Lang::English, "3D Pinball for PowerPC - Space Cadet" },
 			{ Lang::Spanish, "3D Pinball Windows: cadete espacial" },
 			{ Lang::Finnish, "Windows 3D Pinball - Space Cadet" },
 			{ Lang::French, "Pinball 3D pour Windows - Cadet de l'Espace" },
