@@ -52,6 +52,20 @@ winmain::DurationMs winmain::SpinThreshold = DurationMs(0.005);
 WelfordState winmain::SleepState{};
 int winmain::CursorIdleCounter = 0;
 
+static bool IsUnsupportedFeatureMessage(const char* text)
+{
+	if (!text || !text[0])
+		return false;
+
+	std::string lower(text);
+	std::transform(lower.begin(), lower.end(), lower.begin(),
+		[](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+	return lower.find("unsupported") != std::string::npos
+		|| lower.find("not supported") != std::string::npos
+		|| lower.find("feature not supported") != std::string::npos;
+}
+
 int winmain::WinMain(LPCSTR lpCmdLine)
 {
 	std::set_new_handler(memalloc_failure);
@@ -128,12 +142,16 @@ int winmain::WinMain(LPCSTR lpCmdLine)
 	{
 		if ((Mix_Init(MIX_INIT_MID_Proxy) & MIX_INIT_MID_Proxy) == 0)
 		{
-			printf("Could not initialize SDL MIDI, music might not work.\nSDL Error: %s\n", SDL_GetError());
+			auto sdlError = SDL_GetError();
+			if (!IsUnsupportedFeatureMessage(sdlError))
+				printf("Could not initialize SDL MIDI, music might not work.\nSDL Error: %s\n", sdlError);
 			SDL_ClearError();
 		}
 		if (Mix_OpenAudio(MIX_DEFAULT_FREQUENCY, MIX_DEFAULT_FORMAT, 2, 1024) != 0)
 		{
-			printf("Could not open audio device, continuing without audio.\nSDL Error: %s\n", SDL_GetError());
+			auto sdlError = SDL_GetError();
+			if (!IsUnsupportedFeatureMessage(sdlError))
+				printf("Could not open audio device, continuing without audio.\nSDL Error: %s\n", sdlError);
 			SDL_ClearError();
 		}
 		else
@@ -163,7 +181,9 @@ int winmain::WinMain(LPCSTR lpCmdLine)
 		IM_FREE(controllerDb);
 		if (added < 0)
 		{
-			printf("Could not load game controller DB.\nSDL Error: %s\n", SDL_GetError());
+			auto sdlError = SDL_GetError();
+			if (!IsUnsupportedFeatureMessage(sdlError))
+				printf("Could not load game controller DB.\nSDL Error: %s\n", sdlError);
 			SDL_ClearError();
 		}
 	}

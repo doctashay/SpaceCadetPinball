@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# Space Cadet Pinball legacy macOS 10.5 build/port test driver.
+# Space Cadet Pinball legacy macOS 10.4+ build/port test driver.
 # Assumptions:
 # - Toolchain and dependencies are installed via MacPorts + Legacy Support.
 # - GCC 14 is used as the compiler frontend.
@@ -17,9 +17,9 @@ set -euo pipefail
 #   MACPORTS_PREFIX      (default: /opt/local)
 #   TARGET_ARCH          (default: ppc)
 #   TARGET_SYSROOT       (optional; SDK sysroot path)
-#   TARGET_DEPLOYMENT    (default: 10.5)
-#   BUILD_DIR            (default: build-10.5)
-#   INSTALL_PREFIX       (default: <repo>/out-10.5)
+#   TARGET_DEPLOYMENT    (default: 10.4)
+#   BUILD_DIR            (default: build-10.4)
+#   INSTALL_PREFIX       (default: <repo>/out-10.4)
 #   APP_BUNDLE_DIR       (default: <repo>/SpaceCadetPinball.app)
 #   APP_VERSION          (default: 2.1.1-ppc)
 #   DAT_SOURCE           (default: auto-detect PINBALL.DAT/pinball.dat)
@@ -31,10 +31,10 @@ cd "$SCRIPT_DIR"
 
 MACPORTS_PREFIX="${MACPORTS_PREFIX:-/opt/local}"
 TARGET_ARCH="${TARGET_ARCH:-ppc}"
-TARGET_DEPLOYMENT="${TARGET_DEPLOYMENT:-10.5}"
+TARGET_DEPLOYMENT="${TARGET_DEPLOYMENT:-10.4}"
 TARGET_SYSROOT="${TARGET_SYSROOT:-}"
-BUILD_DIR="${BUILD_DIR:-build-10.5}"
-INSTALL_PREFIX="${INSTALL_PREFIX:-$SCRIPT_DIR/out-10.5}"
+BUILD_DIR="${BUILD_DIR:-build-10.4}"
+INSTALL_PREFIX="${INSTALL_PREFIX:-$SCRIPT_DIR/out-10.4}"
 APP_BUNDLE_DIR="${APP_BUNDLE_DIR:-$SCRIPT_DIR/SpaceCadetPinball.app}"
 APP_VERSION="${APP_VERSION:-2.1.1-ppc}"
 DAT_SOURCE="${DAT_SOURCE:-}"
@@ -65,7 +65,7 @@ require_cmd() {
     fi
 }
 
-echo "== SpaceCadetPinball macOS 10.5 OpenGL2 port test =="
+echo "== SpaceCadetPinball macOS 10.4+ OpenGL2 port test =="
 echo "Repo:               $SCRIPT_DIR"
 echo "MacPorts prefix:    $MACPORTS_PREFIX"
 echo "Target arch:        $TARGET_ARCH"
