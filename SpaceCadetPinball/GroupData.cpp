@@ -112,11 +112,19 @@ void GroupData::SplitSplicedBitmap(const gdrv_bitmap8& srcBmp, gdrv_bitmap8& bmp
 	zMap.Resolution = srcBmp.Resolution;
 
 	auto tableWidth = fullscrn::resolution_array[srcBmp.Resolution].TableWidth;
-	auto src = reinterpret_cast<uint16_t*>(srcBmp.IndexedBmpPtr);
-	auto srcChar = reinterpret_cast<char**>(&src);
+	const auto srcData = reinterpret_cast<const uint8_t*>(srcBmp.IndexedBmpPtr);
+	size_t srcOffset = 0;
+	const auto ReadNextU16 = [&srcData, &srcOffset]() -> uint16_t
+	{
+		const auto value = static_cast<uint16_t>(srcData[srcOffset]) |
+		                   (static_cast<uint16_t>(srcData[srcOffset + 1]) << 8u);
+		srcOffset += 2;
+		return value;
+	};
+
 	for (int dstInd = 0;;)
 	{
-		auto stride = static_cast<int16_t>(*src++);
+		auto stride = static_cast<int16_t>(ReadNextU16());
 		if (stride < 0)
 			break;
 
@@ -128,13 +136,11 @@ void GroupData::SplitSplicedBitmap(const gdrv_bitmap8& srcBmp, gdrv_bitmap8& bmp
 		}
 
 		dstInd += stride;
-		for (auto count = *src++; count; count--)
+		for (auto count = ReadNextU16(); count; count--)
 		{
-			auto depth = *src++;
-			bmp.IndexedBmpPtr[dstInd] = **srcChar;
+			auto depth = ReadNextU16();
+			bmp.IndexedBmpPtr[dstInd] = static_cast<char>(srcData[srcOffset++]);
 			zMap.ZPtr1[dstInd] = depth;
-
-			(*srcChar)++;
 			dstInd++;
 		}
 	}
@@ -318,18 +324,20 @@ void DatFile::Finalize()
 
 void DatFile::AddMsgFont(MsgFont* font, const std::string& fontName)
 {
+	const auto fontGapWidth = static_cast<int16_t>(SDL_SwapLE16(static_cast<uint16_t>(font->GapWidth)));
+	const auto fontHeight = static_cast<int16_t>(SDL_SwapLE16(static_cast<uint16_t>(font->Height)));
 	auto groupId = Groups.back()->GroupId + 1;
 	auto ptrToData = reinterpret_cast<char*>(font->Data);
 	for (auto charInd = 32; charInd < 128; charInd++, groupId++)
 	{
 		auto curChar = reinterpret_cast<MsgFontChar*>(ptrToData);
 		assertm(curChar->Width == font->CharWidths[charInd], "Score: mismatched font width");
-		ptrToData += curChar->Width * font->Height + 1;
+		ptrToData += curChar->Width * fontHeight + 1;
 
-		auto bmp = new gdrv_bitmap8(curChar->Width, font->Height, true);
+		auto bmp = new gdrv_bitmap8(curChar->Width, fontHeight, true);
 		auto srcPtr = curChar->Data;
 		auto dstPtr = &bmp->IndexedBmpPtr[bmp->Stride * (bmp->Height - 1)];
-		for (auto y = 0; y < font->Height; ++y)
+		for (auto y = 0; y < fontHeight; ++y)
 		{
 			memcpy(dstPtr, srcPtr, curChar->Width);
 			srcPtr += curChar->Width;
@@ -346,7 +354,7 @@ void DatFile::AddMsgFont(MsgFont* font, const std::string& fontName)
 			group->AddEntry(new EntryData(FieldTypes::GroupName, groupName));
 
 			auto gaps = new char[2];
-			*reinterpret_cast<int16_t*>(gaps) = font->GapWidth;
+			*reinterpret_cast<int16_t*>(gaps) = fontGapWidth;
 			group->AddEntry(new EntryData(FieldTypes::ShortArray, gaps));
 		}
 		else
